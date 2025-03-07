@@ -1,3 +1,10 @@
+# Instruções importantes sobre branches:
+
+ A branch `development` irá receber as novas atualizações para mediar conflitos de merge. As implementações devem vir de outras branches. Apenas em momentos de certeza e cruciais, iremos fazer o *merge* 
+da development na `main/master`. 
+___
+<br>
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
