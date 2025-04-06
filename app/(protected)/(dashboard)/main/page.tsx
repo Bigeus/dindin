@@ -58,7 +58,7 @@ export default function Home() {
             <Card className="w-1/3 bg-zinc-700 text-white border-none justify-center text-center">
               <h3>Registrar Transação</h3>
               <Link href={"/register-transaction"}>
-                <Button color="green" className="w-90">Iniciar</Button>
+                <Button color="green" className="w-auto">Iniciar</Button>
               </Link>
             </Card>
           </div>
