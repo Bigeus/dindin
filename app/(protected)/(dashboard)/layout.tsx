@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import Image from "next/image"
-import logo from '../../public/hannaLogo.png';
+import logo from '../../../public/hannaLogo.png';
 
 interface MainLayoutProps {
   children: React.ReactNode

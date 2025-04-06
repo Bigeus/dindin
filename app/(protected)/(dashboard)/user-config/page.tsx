@@ -121,7 +121,6 @@ const UserConfigPage = () => {
 
   return (
     <Card className="w-full mx-auto bg-zinc-800 border-zinc-700 text-white">
-      <Toaster />
       <CardHeader className="pb-3">
         <CardTitle className="text-2xl font-bold text-white">Configurações de usuário</CardTitle>
       </CardHeader>

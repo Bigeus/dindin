@@ -144,7 +144,6 @@ const fakeOnSubmit = (data: RegistrationFormValues) => {
   return (
     <div className="container mx-auto py-10">
       <Card className="w-full max-w-4xl mx-auto bg-zinc-800 border-zinc-700 text-white">
-        <Toaster />
         <CardHeader className="pb-3">
           <CardTitle className="text-2xl font-bold text-white">Cadastro de Usuário</CardTitle>
 

@@ -29,10 +29,11 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <AuthProvider>
+        {/* RETIRAR O COMENTÁRIO PARA COMEÇAR A USAR O FLOW DE AUTENTICAÇÃO */}
+        {/* <AuthProvider> */}
           <Toaster position="top-center" />
           {children}
-        </AuthProvider>
+        {/* </AuthProvider> */}
       </body>
     </html>
   );

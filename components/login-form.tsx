@@ -27,7 +27,7 @@ type LoginFormValues = z.infer<typeof loginSchema>
 export function LoginForm({ className, ...props }: React.ComponentProps<"div">) {
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
-  const { login } = useAuth()
+  /* const { login } = useAuth() */
 
   // Initialize react-hook-form with zod resolver
   const {
@@ -48,7 +48,7 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
 
     try {
       // Usar a função de login do contexto de autenticação
-      await login(data.email, data.password)
+      /* await login(data.email, data.password) */
 
       toast.success("Login realizado com sucesso!\n Você será redirecionado em instantes.")
 
@@ -110,7 +110,6 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
 
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
-      <Toaster />
       <form onSubmit={handleSubmit(process.env.NODE_ENV === "development" ? fakeOnSubmit : onSubmit)}>
         <div className="flex flex-col gap-6">
           <div className="flex flex-col items-center gap-2">
