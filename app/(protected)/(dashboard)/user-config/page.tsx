@@ -70,7 +70,7 @@ const UserConfigPage = () => {
         await axios.put("http://localhost:8080/user-config", data)
       }
 
-      toast("Usuário salvo com sucesso")
+      toast.success("Usuário salvo com sucesso")
     } catch (error) {
       console.error("Error updating user config:", error)
       toast.error("Erro ao salvar as configurações do usuário")

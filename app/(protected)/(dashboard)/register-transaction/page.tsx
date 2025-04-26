@@ -20,6 +20,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar"
 import { cn } from "@/lib/utils"
 import { CashAccountCombobox } from "@/components/cash-account-combobox"
+import { toast } from "sonner"
+import { useRouter } from "next/navigation"
 
 // Define the form schema with zod
 const transactionSchema = z.object({
@@ -102,7 +104,9 @@ export default function RegisterTransactionPage() {
     console.log("Attachment:", attachment)
 
     // For demo purposes, show an alert
-    alert("Transação registrada com sucesso!")
+    toast.success("Transação registrada com sucesso!")
+    const router = useRouter();
+    router.push("/main")
   }
 
   return (

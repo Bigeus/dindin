@@ -14,6 +14,8 @@ import { toast, Toaster } from "sonner"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useAuth } from "@/contexts/auth-context"
+import Image from "next/image"
+import logo from "../public/cashLogo.png"
 
 // Define the form schema with zod
 const loginSchema = z.object({
@@ -115,15 +117,14 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
           <div className="flex flex-col items-center gap-2">
             <a href="#" className="flex flex-col items-center gap-2 font-medium">
               <div className="flex items-center justify-center rounded-md">
-                <CandlestickChartIcon className="size-[50px]" />
-                <Briefcase className="size-[50px]" />
+                <Image alt="CashChegô Logo" src={logo} height={200} width={200}/>
               </div>
               <span className="sr-only">Acme Inc.</span>
             </a>
             <h1 className="text-xl font-bold">DinDin company.</h1>
             <div className="text-center text-sm">
               Não possui uma conta?{" "}
-              <Link href={"/register"} className="underline underline-offset-4">
+              <Link href={"/registration"} className="underline underline-offset-4">
                 Fazer cadastro
               </Link>
             </div>

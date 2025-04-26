@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 
 // Rotas que não precisam de autenticação
-const publicRoutes = ["/login", "/register", "/forgot-password"]
+const publicRoutes = ["/login", "/register-transaction", "/forgot-password", "/registration"]
 
 export function middleware(request: NextRequest) {
   const token = request.cookies.get("dindin_auth_token")
