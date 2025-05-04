@@ -1,8 +1,8 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
-import { Menu, User, Settings, LogOut, Bell, Cog } from "lucide-react"
+import { useEffect, useState } from "react"
+import { Menu, User, Settings, LogOut, Bell, Cog, Home, Landmark, Banknote } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
@@ -29,6 +29,7 @@ interface MainLayoutProps {
 export default function MainLayout({ children }: MainLayoutProps) {
   const [expanded, setExpanded] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false) // Estado para controlar a abertura do modal
+  const [userName, setUserName] = useState("");
   const router = useRouter()
 
   const eraseUserStorage = () => {
@@ -59,6 +60,22 @@ export default function MainLayout({ children }: MainLayoutProps) {
     setIsModalOpen(false) // Apenas fecha o modal se o usuário cancelar
   }
 
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const storedUser = localStorage.getItem("dindin_user")
+      if (storedUser) {
+        try {
+          const user = JSON.parse(storedUser)
+          setUserName(user.name || "Usuário")
+        } catch {
+          setUserName("Usuário")
+        }
+      } else {
+        setUserName("Usuário")
+      }
+    }
+  }, [])
+
   return (
     <div className="flex h-screen bg-zinc-900 text-white">
       {/* LEFT NAVBAR */}
@@ -70,7 +87,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
       >
         {/* Logo area */}
         <div className="border-b border-zinc-700 flex justify-center items-center align-middle">
-          <Link href={'/main'} className="pb-4">
+          <Link href={'/main'} style={{ paddingBottom: '14px' }}>
             <Image alt="logo" src={logo} />
           </Link>
         </div>
@@ -82,16 +99,26 @@ export default function MainLayout({ children }: MainLayoutProps) {
 
         {/* Navigation items */}
         <div className="flex flex-col flex-1 py-4 gap-2">
-          <NavItem icon={<Bell />} label="Notificações" expanded={expanded} />
-          <NavItem icon={<Cog />} label="Configurações" expanded={expanded} />
+          <Link href={"/main"}>
+            <NavItem icon={<Home />} label="Home" expanded={expanded} />
+          </Link>
+          <Link href={"/accounts"}>
+            <NavItem icon={<Landmark />} label="Contas" expanded={expanded} />
+          </Link>
+          <Link href={"/register-transaction"}>
+            <NavItem icon={<Banknote />} label="Transação" expanded={expanded} />
+          </Link>
+          <Link href={'/user-config'}>
+            <NavItem icon={<User />} label="Perfil" expanded={expanded} />
+          </Link>
         </div>
 
         {/* Bottom items */}
         <div className="flex flex-col gap-2 p-2 border-t border-zinc-700 pt-4 pb-4">
-          <Link href={'/user-config'}>
+          {/* <Link href={'/user-config'}>
             <NavItem icon={<User />} label="Perfil" expanded={expanded} />
-          </Link>
-          <NavItem icon={<Settings />} label="Configurações" expanded={expanded} />
+          </Link> */}
+         {/*  <NavItem icon={<Settings />} label="Configurações" expanded={expanded} /> */}
           {/* Navegação para logout com modal de confirmação */}
           <NavItem icon={<LogOut />} label="Sair" expanded={expanded} onClick={handleLogoutClick} />
         </div>
@@ -102,7 +129,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
         {/* BIG PAGE TITLE HEADER */}
         <header className="h-20 border-b border-zinc-800 p-4 flex items-center">
           <div className="flex flex-col">
-            <h1 className="text-2xl font-bold">Olá Usuário!</h1>
+            <h1 className="text-2xl font-bold">Olá {userName}!</h1>
           </div>
         </header>
 

@@ -16,6 +16,8 @@ import Link from "next/link"
 import { useAuth } from "@/contexts/auth-context"
 import Image from "next/image"
 import logo from "../public/cashLogo.png"
+import { hashPassword } from "@/lib/hash"
+import userService from "@/services/userService"
 
 // Define the form schema with zod
 const loginSchema = z.object({
@@ -44,67 +46,63 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
     },
   })
 
+  // Função para autenticar o usuário com o serviço
+  const loginUser = async (email: string, password: string) => {
+    try {
+      // Hash da senha antes de enviar para verificação
+      const hashedPassword = await hashPassword(password)
+      
+      // Tentando encontrar o usuário pelo email
+      const users = await userService.findAll()
+      const user = users.find(u => u.email === email)
+      
+      if (!user) {
+        throw new Error("Usuário não encontrado")
+      }
+      
+      // Verificando se a senha está correta
+      if (user.password !== hashedPassword) {
+        throw new Error("Senha incorreta")
+      }
+      
+      // Se chegou aqui, o usuário existe e a senha está correta
+      return {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        adress: user.adress, // Mantendo o mesmo nome de campo da API
+      }
+    } catch (error) {
+      console.error("Erro ao fazer login:", error)
+      throw error
+    }
+  }
+
   // Form submission handler
   const onSubmit = async (data: LoginFormValues) => {
     setIsLoading(true)
-
+  
     try {
-      // Usar a função de login do contexto de autenticação
-      /* await login(data.email, data.password) */
-
-      toast.success("Login realizado com sucesso!\n Você será redirecionado em instantes.")
-
-      // Redirecionar após login bem-sucedido
+      // Usando a função de login implementada
+      const user = await loginUser(data.email, data.password)
+  
+      // Mantendo o token fake conforme solicitado
+      const fakeToken =
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  
+      // Armazena dados localmente
+      localStorage.setItem("dindin_user", JSON.stringify(user))
+      document.cookie = `dindin_auth_token=${fakeToken}; path=/; max-age=${60 * 60 * 24 * 7}`
+  
+      toast.success("Login realizado com sucesso!\nVocê será redirecionado em instantes.")
+  
       setTimeout(() => {
         router.push("/main")
       }, 1500)
     } catch (error: any) {
-      console.error("Login error:", error)
-
-      // Exibir mensagem de erro
-      if (error.response) {
-        toast.error(`Erro ao fazer login: ${error.response.data.message || "Credenciais inválidas"}`)
-      } else {
-        toast.error("Erro ao fazer login. Verifique sua conexão.")
-      }
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  // Função de login simulado para desenvolvimento
-  const fakeOnSubmit = async (data: LoginFormValues) => {
-    setIsLoading(true)
-
-    try {
-      // Simulando um delay de 2 segundos
-      await new Promise((resolve) => setTimeout(resolve, 2000))
-
-      // Simular um token JWT
-      const fakeToken =
-        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlVzdcOhcmlvIFRlc3RlIiwiZW1haWwiOiJ0ZXN0ZUBleGFtcGxlLmNvbSIsInJvbGUiOiJ1c2VyIiwiZXhwIjoxNzE3MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
-
-      // Simular usuário
-      const fakeUser = {
-        id: "123",
-        name: "Usuário Teste",
-        email: data.email,
-        role: "user",
-      }
-
-      // Armazenar dados simulados
-      localStorage.setItem("dindin_user", JSON.stringify(fakeUser))
-      document.cookie = `dindin_auth_token=${fakeToken}; path=/; max-age=${60 * 60 * 24 * 7}`
-
-      toast.success("Login realizado com sucesso!\n Você será redirecionado em instantes.")
-
-      // Redirecionar após delay
-      setTimeout(() => {
-        router.push("/main")
-      }, 1500)
-    } catch (error) {
-      console.error("Erro ao simular login:", error)
-      toast.error("Erro ao fazer login.")
+      console.error("Erro no login:", error)
+      toast.error("Email ou senha inválidos")
     } finally {
       setIsLoading(false)
     }
@@ -112,7 +110,7 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
 
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
-      <form onSubmit={handleSubmit(process.env.NODE_ENV === "development" ? fakeOnSubmit : onSubmit)}>
+      <form onSubmit={handleSubmit(onSubmit)}>
         <div className="flex flex-col gap-6">
           <div className="flex flex-col items-center gap-2">
             <a href="#" className="flex flex-col items-center gap-2 font-medium">
@@ -195,4 +193,3 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
     </div>
   )
 }
-

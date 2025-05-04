@@ -1,19 +1,16 @@
 "use client"
 
-import type React from "react"
-
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import { CalendarIcon, Upload } from "lucide-react"
+import { CalendarIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -22,6 +19,10 @@ import { cn } from "@/lib/utils"
 import { CashAccountCombobox } from "@/components/cash-account-combobox"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
+import transactionService from "@/services/transactionService"
+import accountService from "@/services/accountService"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import type { Account } from "@/services/accountService"
 
 // Define the form schema with zod
 const transactionSchema = z.object({
@@ -31,7 +32,7 @@ const transactionSchema = z.object({
   accountId: z.string({
     required_error: "A conta é obrigatória",
   }),
-  type: z.enum(["entrada", "saida"], {
+  type: z.enum(["REVENUE", "EXPENSE"], {
     required_error: "O tipo de transação é obrigatório",
   }),
   value: z.coerce
@@ -40,37 +41,80 @@ const transactionSchema = z.object({
       invalid_type_error: "O valor deve ser um número",
     })
     .positive("O valor deve ser positivo"),
-  description: z.string().min(5, "A descrição deve ter pelo menos 5 caracteres"),
-  responsible: z.string().min(2, "O responsável deve ter pelo menos 2 caracteres"),
-  attachmentName: z.string().optional(),
+  /* description: z.string().min(5, "A descrição deve ter pelo menos 5 caracteres"),
+  responsible: z.string().min(2, "O responsável deve ter pelo menos 2 caracteres"), */
+  categoryId: z.coerce.number({
+    required_error: "A categoria é obrigatória",
+  }),
 })
 
 // Infer the type from the schema
 type TransactionFormValues = z.infer<typeof transactionSchema>
 
 export default function RegisterTransactionPage() {
-  const [attachment, setAttachment] = useState<File | null>(null)
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [accounts, setAccounts] = useState<Account[]>([])
+  const [categories, setCategories] = useState<{id: number, name: string}[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  const router = useRouter()
 
-  // Fake cash accounts data
-  const cashAccounts = [
-    { id: "1", name: "Conta Principal", balance: 2500.0 },
-    { id: "2", name: "Conta Secundária", balance: 1500.0 },
-    { id: "3", name: "Conta Poupança", balance: 5000.0 },
-    { id: "4", name: "Conta Investimentos", balance: 10000.0 },
-    { id: "5", name: "Conta Despesas", balance: 800.0 },
-  ]
+  // Carregar contas e categorias do usuário
+  useEffect(() => {
+    const loadUserData = async () => {
+      try {
+        // Obter o usuário do localStorage
+        const userString = localStorage.getItem("dindin_user")
+        if (!userString) {
+          toast.error("Usuário não encontrado. Faça login novamente.")
+          router.push("/login")
+          return
+        }
+
+        const user = JSON.parse(userString)
+        
+        // Buscar contas do usuário
+        const userAccounts = await accountService.findAll()
+        
+        // Filtrando apenas contas do usuário logado (se necessário)
+        const filteredAccounts = userAccounts.filter(account => 
+          account.client && account.client.id === user.id
+        )
+        
+        setAccounts(filteredAccounts.length > 0 ? filteredAccounts : userAccounts)
+
+        // Usar as categorias fornecidas
+        setCategories([
+          { id: 1, name: "Salário" },
+          { id: 2, name: "Transferência Interna" },
+          { id: 3, name: "Compra Online" },
+          { id: 4, name: "Reembolso" },
+          { id: 5, name: "Pagamento de Conta" }
+        ])
+      } catch (error) {
+        console.error("Erro ao carregar dados:", error)
+        toast.error("Erro ao carregar dados. Tente novamente.")
+        
+        // Usar contas de exemplo em caso de erro
+        setAccounts([
+          { id: 1, name: "Conta Principal", balance: 2500.0, institution: "Banco A" },
+          { id: 2, name: "Conta Secundária", balance: 1500.0, institution: "Banco B" },
+          { id: 3, name: "Conta Poupança", balance: 5000.0, institution: "Banco C" },
+          { id: 4, name: "Conta Investimentos", balance: 10000.0, institution: "Banco D" },
+          { id: 5, name: "Conta EXPENSEs", balance: 800.0, institution: "Banco E" },
+        ])
+      }
+    }
+
+    loadUserData()
+  }, [router])
 
   // Initialize form with default values
   const form = useForm<TransactionFormValues>({
     resolver: zodResolver(transactionSchema),
     defaultValues: {
       date: new Date(),
-      type: "entrada",
+      type: "REVENUE",
       value: undefined,
-      description: "",
-      responsible: "",
-      attachmentName: "",
+      categoryId: undefined,
     },
   })
 
@@ -78,35 +122,68 @@ export default function RegisterTransactionPage() {
   const watchedValues = form.watch()
 
   // Get selected account
-  const selectedAccount = cashAccounts.find((account) => account.id === watchedValues.accountId)
-
-  // Handle file upload
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0] || null
-    if (file) {
-      setAttachment(file)
-      form.setValue("attachmentName", file.name)
-
-      // Create a preview URL for image files
-      if (file.type.startsWith("image/")) {
-        const url = URL.createObjectURL(file)
-        setPreviewUrl(url)
-      } else {
-        setPreviewUrl(null)
-      }
-    }
-  }
+  const selectedAccount = accounts.find((account) => account.id === Number(watchedValues.accountId))
 
   // Form submission handler
-  const onSubmit = (data: TransactionFormValues) => {
-    // Here you would typically send the data to your API
-    console.log("Form submitted:", data)
-    console.log("Attachment:", attachment)
+  const onSubmit = async (data: TransactionFormValues) => {
+    try {
+      setIsLoading(true)
+      
+      // Obter o usuário do localStorage
+      const userString = localStorage.getItem("dindin_user")
+      if (!userString) {
+        toast.error("Usuário não encontrado. Faça login novamente.")
+        router.push("/login")
+        return
+      }
 
-    // For demo purposes, show an alert
-    toast.success("Transação registrada com sucesso!")
-    const router = useRouter();
-    router.push("/main")
+      const user = JSON.parse(userString)
+      
+      // Encontrar a conta selecionada
+      const selectedAccount = accounts.find(account => account.id === Number(data.accountId))
+      
+      if (!selectedAccount) {
+        toast.error("Conta não encontrada. Selecione uma conta válida.")
+        return
+      }
+
+      // Calcular o saldo após a transação
+      let balanceAfter = selectedAccount.balance
+      if (data.type === "REVENUE") {
+        balanceAfter += data.value
+      } else if (data.type === "EXPENSE") {
+        balanceAfter -= data.value
+      }
+
+      // Criar transação no formato esperado pelo backend
+      const transactionData = {
+        ammount: data.value,
+        balanceAfter: balanceAfter,
+        type: data.type,
+        category: data.categoryId,
+        accountId: Number(data.accountId),
+        account: {
+          id: selectedAccount.id,
+          name: selectedAccount.name,
+          balance: selectedAccount.balance,
+          institution: selectedAccount.institution
+        },
+        creationDate: data.date.toISOString()
+      }
+
+      console.log("Enviando transação:", transactionData)
+      
+      // Enviar para o serviço
+      await transactionService.insert(transactionData)
+
+      toast.success("Transação registrada com sucesso!")
+      router.push("/main")
+    } catch (error) {
+      console.error("Erro ao registrar transação:", error)
+      toast.error(error instanceof Error ? error.message : "Erro ao registrar transação. Tente novamente.")
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -168,46 +245,77 @@ export default function RegisterTransactionPage() {
                     render={({ field }) => (
                       <FormItem className="flex flex-col text-white">
                         <FormLabel>Conta:</FormLabel>
-                        <CashAccountCombobox accounts={cashAccounts} value={field.value} onChange={field.onChange} />
+                        <CashAccountCombobox 
+                          accounts={accounts.map(acc => ({
+                            id: String(acc.id),
+                            name: acc.name,
+                            balance: acc.balance
+                          }))} 
+                          value={field.value} 
+                          onChange={field.onChange} 
+                        />
                         <FormMessage />
                       </FormItem>
                     )}
                   />
                 </div>
 
-                {/* Transaction Type */}
-                <FormField
-                  control={form.control}
-                  name="type"
-                  render={({ field }) => (
-                    <FormItem className="space-y-3 text-white">
-                      <FormLabel>Tipo de Transação:</FormLabel>
-                      <div className="flex space-x-4">
-                        <label className="flex items-center space-x-2 cursor-pointer">
-                          <input
-                            type="radio"
-                            value="entrada"
-                            checked={field.value === "entrada"}
-                            onChange={() => field.onChange("entrada")}
-                            className="form-radio h-4 w-4 text-green-600"
-                          />
-                          <span className="text-white">Entrada</span>
-                        </label>
-                        <label className="flex items-center space-x-2 cursor-pointer">
-                          <input
-                            type="radio"
-                            value="saida"
-                            checked={field.value === "saida"}
-                            onChange={() => field.onChange("saida")}
-                            className="form-radio h-4 w-4 text-red-600"
-                          />
-                          <span className="text-white">Saída</span>
-                        </label>
-                      </div>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Transaction Type */}
+                  <FormField
+                    control={form.control}
+                    name="type"
+                    render={({ field }) => (
+                      <FormItem className="text-white">
+                        <FormLabel>Tipo de Transação:</FormLabel>
+                        <Select 
+                          value={field.value} 
+                          onValueChange={field.onChange}
+                        >
+                          <FormControl>
+                            <SelectTrigger className="bg-zinc-700/50 border-zinc-600">
+                              <SelectValue placeholder="Selecione o tipo" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent className="bg-zinc-800 border-zinc-700">
+                            <SelectItem value="REVENUE">Entrada (REVENUE)</SelectItem>
+                            <SelectItem value="EXPENSE">Saída (EXPENSE)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* Category Selection */}
+                  <FormField
+                    control={form.control}
+                    name="categoryId"
+                    render={({ field }) => (
+                      <FormItem className="text-white">
+                        <FormLabel>Categoria:</FormLabel>
+                        <Select 
+                          value={field.value?.toString()} 
+                          onValueChange={(value) => field.onChange(parseInt(value))}
+                        >
+                          <FormControl>
+                            <SelectTrigger className="bg-zinc-700/50 border-zinc-600">
+                              <SelectValue placeholder="Selecione a categoria" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent className="bg-zinc-800 border-zinc-700">
+                            {categories.map(category => (
+                              <SelectItem key={category.id} value={category.id.toString()}>
+                                {category.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
 
                 {/* Value Field */}
                 <FormField
@@ -238,7 +346,7 @@ export default function RegisterTransactionPage() {
                 />
 
                 {/* Description Field */}
-                <FormField
+               {/*  <FormField
                   control={form.control}
                   name="description"
                   render={({ field }) => (
@@ -254,38 +362,10 @@ export default function RegisterTransactionPage() {
                       <FormMessage />
                     </FormItem>
                   )}
-                />
-
-                {/* Attachment Field */}
-                <div className="space-y-2">
-                  <Label htmlFor="attachment" className="text-white">Anexar Nota:</Label>
-                  <div className="flex">
-                    <Input
-                      id="attachment"
-                      type="text"
-                      readOnly
-                      placeholder="Anexe a Nota fiscal"
-                      value={attachment?.name || ""}
-                      className="bg-zinc-700/50 border-zinc-600 rounded-r-none"
-                    />
-                    <Label
-                      htmlFor="file-upload"
-                      className="flex items-center justify-center px-4 border border-l-0 border-zinc-600 bg-zinc-700 rounded-r-md cursor-pointer"
-                    >
-                      <Upload className="h-4 w-4" />
-                    </Label>
-                    <Input
-                      id="file-upload"
-                      type="file"
-                      className="hidden"
-                      onChange={handleFileChange}
-                      accept="image/*,.pdf"
-                    />
-                  </div>
-                </div>
+                /> */}
 
                 {/* Responsible Field */}
-                <FormField
+                {/* <FormField
                   control={form.control}
                   name="responsible"
                   render={({ field }) => (
@@ -301,21 +381,17 @@ export default function RegisterTransactionPage() {
                       <FormMessage />
                     </FormItem>
                   )}
-                />
+                /> */}
 
                 {/* Form Actions */}
                 <div className="flex justify-center space-x-4 pt-4">
-                  <Button type="submit" className="bg-green-600 hover:bg-green-700 text-white px-8">
-                    Criar
-                  </Button>
-                  {/* <Button
-                    type="button"
-                    variant="outline"
-                    className="border-zinc-600 bg-zinc-700 hover:bg-zinc-600 text-white px-8"
-                    onClick={() => form.reset()}
+                  <Button 
+                    type="submit" 
+                    className="bg-green-600 hover:bg-green-700 text-white px-8"
+                    disabled={isLoading}
                   >
-                    Cancelar
-                  </Button> */}
+                    {isLoading ? "Criando..." : "Criar"}
+                  </Button>
                 </div>
               </form>
             </Form>
@@ -339,7 +415,18 @@ export default function RegisterTransactionPage() {
                 </div>
               </div>
 
-              {watchedValues.type === "entrada" && (
+              <div>
+                <p className="text-sm font-medium mb-1">Categoria:</p>
+                <div className="h-4 bg-gray-300 rounded w-2/5">
+                  {watchedValues.categoryId && (
+                    <div className="bg-blue-600 h-full rounded text-xs text-white flex items-center px-2">
+                      {categories.find(c => c.id === watchedValues.categoryId)?.name || 'Categoria'}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {watchedValues.type === "REVENUE" && (
                 <div>
                   <p className="text-sm font-medium mb-1">Valor de Entrada:</p>
                   <div className="h-4 bg-gray-300 rounded w-2/5">
@@ -352,7 +439,7 @@ export default function RegisterTransactionPage() {
                 </div>
               )}
 
-              {watchedValues.type === "saida" && (
+              {watchedValues.type === "EXPENSE" && (
                 <div>
                   <p className="text-sm font-medium mb-1">Valor de Saída:</p>
                   <div className="h-4 bg-gray-300 rounded w-2/5">
@@ -365,7 +452,7 @@ export default function RegisterTransactionPage() {
                 </div>
               )}
 
-              <div>
+              {/* <div>
                 <p className="text-sm font-medium mb-1">Descrição:</p>
                 <div className="space-y-1">
                   {watchedValues.description ? (
@@ -382,31 +469,25 @@ export default function RegisterTransactionPage() {
                     </>
                   )}
                 </div>
-              </div>
+              </div> */}
 
-              <div>
-                <p className="text-sm font-medium mb-1">Nota anexada:</p>
-                {attachment ? (
-                  previewUrl ? (
-                    <div className="border border-gray-300 rounded p-2 max-w-xs">
-                      <img src={previewUrl || "/placeholder.svg"} alt="Preview" className="max-h-32 mx-auto" />
-                    </div>
-                  ) : (
-                    <div className="h-4 bg-gray-600 rounded w-1/2">
-                      <div className="text-xs text-white px-2">{attachment.name}</div>
-                    </div>
-                  )
-                ) : (
-                  <div className="h-4 bg-gray-300 rounded w-1/2"></div>
-                )}
-              </div>
-
-              <div>
+             {/*  <div>
                 <p className="text-sm font-medium mb-1">Responsável:</p>
                 <div className="h-4 bg-gray-300 rounded w-3/5">
                   {watchedValues.responsible && (
                     <div className="bg-gray-600 h-full rounded text-xs text-white flex items-center px-2">
                       {watchedValues.responsible}
+                    </div>
+                  )}
+                </div>
+              </div> */}
+
+              <div>
+                <p className="text-sm font-medium mb-1">Conta:</p>
+                <div className="h-4 bg-gray-300 rounded w-2/5">
+                  {selectedAccount && (
+                    <div className="bg-blue-600 h-full rounded text-xs text-white flex items-center px-2">
+                      {selectedAccount.name} - {selectedAccount.institution}
                     </div>
                   )}
                 </div>
@@ -427,6 +508,4 @@ export default function RegisterTransactionPage() {
         </Card>
       </div>
     </div>
-  )
-}
-
+  )}

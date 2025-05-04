@@ -4,7 +4,6 @@ import { useEffect, useState } from "react"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
-import axios from "axios"
 import { toast, Toaster } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -12,15 +11,15 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import { MoonLoader } from "react-spinners"
 import Loading from "@/components/Loading"
+import userService from "@/services/userService"
 
 // Define the form schema with zod
 const userConfigSchema = z.object({
   // User Information
   name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres"),
   phone: z.string().min(10, "Telefone inválido").optional().or(z.literal("")),
-  address: z.string().min(5, "Endereço deve ter pelo menos 5 caracteres").optional().or(z.literal("")),
+  adress: z.string().min(5, "Endereço deve ter pelo menos 5 caracteres").optional().or(z.literal("")), // Note: API uses "adress" not "address"
   email: z.string().email("Email inválido"),
   password: z.string().min(6, "Senha deve ter pelo menos 6 caracteres").optional().or(z.literal("")),
 
@@ -35,7 +34,8 @@ type UserConfigFormValues = z.infer<typeof userConfigSchema>
 
 const UserConfigPage = () => {
   const [isSaving, setIsSaving] = useState(false)
-  const [isLoading, setIsLoading] = useState(true) // Controle de loading para dados
+  const [isLoading, setIsLoading] = useState(true)
+  const [userId, setUserId] = useState<number | null>(null)
 
   // Initialize react-hook-form with zod resolver
   const {
@@ -48,7 +48,7 @@ const UserConfigPage = () => {
     defaultValues: {
       name: "",
       phone: "",
-      address: "",
+      adress: "",
       email: "",
       password: "",
       position: "",
@@ -59,18 +59,53 @@ const UserConfigPage = () => {
 
   // Form submission handler
   const onSubmit = async (data: UserConfigFormValues) => {
+    if (!userId) {
+      toast.error("ID do usuário não encontrado")
+      return
+    }
+
     setIsSaving(true)
 
     try {
-      // If password is empty, remove it from the request
-      if (!data.password) {
-        const { password, ...dataWithoutPassword } = data
-        await axios.put("http://localhost:8080/user-config", dataWithoutPassword)
-      } else {
-        await axios.put("http://localhost:8080/user-config", data)
+      // Prepare data for update - map the form fields to API fields
+      const updateData: any = {
+        name: data.name,
+        phone: data.phone,
+        adress: data.adress, // Note: API uses "adress" not "address"
+        email: data.email,
       }
 
-      toast.success("Usuário salvo com sucesso")
+      // Only include password if it's provided
+      if (data.password) {
+        updateData.password = data.password
+      }
+
+      // Add company-related information as metadata or custom fields if your API supports it
+      // This would depend on your backend API structure
+      
+      // Update user in API
+      const updatedUser = await userService.update(userId, updateData)
+      
+      // Get current user data from localStorage
+      const storedUserString = localStorage.getItem("dindin_user")
+      if (storedUserString) {
+        const storedUser = JSON.parse(storedUserString)
+        
+        // Create a new object with updated values, preserving other fields
+        const updatedStoredUser = { 
+          ...storedUser,
+          name: updatedUser.name,
+          phone: updatedUser.phone,
+          adress: updatedUser.adress,
+          email: updatedUser.email
+        }
+        
+        // Save updated user back to localStorage
+        localStorage.setItem("dindin_user", JSON.stringify(updatedStoredUser))
+        console.log("User data updated in localStorage:", updatedStoredUser)
+      }
+      
+      toast.success("Usuário atualizado com sucesso")
     } catch (error) {
       console.error("Error updating user config:", error)
       toast.error("Erro ao salvar as configurações do usuário")
@@ -79,44 +114,56 @@ const UserConfigPage = () => {
     }
   }
 
-  // Simulando dados do usuário que seriam carregados do backend
-  const fakeUserData: UserConfigFormValues = {
-    name: "João Silva",
-    phone: "1234567890",
-    address: "Rua Exemplo, 123",
-    email: "joao.silva@example.com",
-    password: "",
-    position: "Desenvolvedor",
-    department: "TI",
-    registration: "12345",
-  };
-
   useEffect(() => {
-    // Simulando um delay de 2 segundos para o fetch dos dados
     const loadUserData = async () => {
-      await new Promise((resolve) => setTimeout(resolve, 2000)); // Simula o delay do backend
+      try {
+        // Get user from localStorage
+        const storedUser = localStorage.getItem("dindin_user")
+        if (!storedUser) {
+          toast.error("Usuário não encontrado")
+          setIsLoading(false)
+          return
+        }
 
-      // Preenche os campos com os dados simulados
-      setValue("name", fakeUserData.name);
-      setValue("phone", fakeUserData.phone);
-      setValue("address", fakeUserData.address);
-      setValue("email", fakeUserData.email);
-      setValue("password", fakeUserData.password); // Não preenche a senha por segurança
-      setValue("position", fakeUserData.position);
-      setValue("department", fakeUserData.department);
-      setValue("registration", fakeUserData.registration);
+        const user = JSON.parse(storedUser)
+        
+        if (!user.id) {
+          toast.error("ID do usuário não encontrado")
+          setIsLoading(false)
+          return
+        }
 
-      console.log("Dados do usuário carregados:", fakeUserData);
-      setIsLoading(false); // Dados carregados, esconde o loader
-    };
+        setUserId(user.id)
 
-    loadUserData();
-  }, [setValue]);
+        // Fetch fresh user data from API
+        const userData = await userService.findById(user.id)
+        
+        // Populate form with user data
+        setValue("name", userData.name || "")
+        setValue("phone", userData.phone || "")
+        setValue("adress", userData.adress || "") // Note: API uses "adress" not "address"
+        setValue("email", userData.email || "")
+        // Don't set password for security reasons
+        
+        // Set company information if available
+        // These fields might not be directly on the user object in your API
+        // You might need to adjust this based on your actual data structure
+        setValue("registration", userData.codUser || "")
+
+        console.log("User data loaded successfully")
+      } catch (error) {
+        console.error("Error loading user data:", error)
+        toast.error("Erro ao carregar dados do usuário")
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadUserData()
+  }, [setValue])
 
   if (isLoading) {
-    return (
-     <Loading isLoading={isLoading}/>
-    );
+    return <Loading isLoading={isLoading} />
   }
 
   return (
@@ -128,9 +175,9 @@ const UserConfigPage = () => {
         <form onSubmit={handleSubmit(onSubmit)}>
           {/* INFORMAÇÕES DO USUÁRIO */}
           <div>
-            <div className="bg-zinc-700/50 p-2 mb-4 rounded">
+           {/*  <div className="bg-zinc-700/50 p-2 mb-4 rounded">
               <h3 className="text-lg font-medium">Informações do Usuário</h3>
-            </div>
+            </div> */}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-4">
@@ -159,15 +206,15 @@ const UserConfigPage = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="address">Endereço:</Label>
+                  <Label htmlFor="adress">Endereço:</Label>
                   <Input
-                    id="address"
+                    id="adress"
                     placeholder="Insira o Endereço..."
                     className="bg-zinc-700/30 border-zinc-600 focus-visible:ring-zinc-500"
-                    {...register("address")}
-                    aria-invalid={errors.address ? "true" : "false"}
+                    {...register("adress")}
+                    aria-invalid={errors.adress ? "true" : "false"}
                   />
-                  {errors.address && <p className="text-sm text-red-400">{errors.address.message}</p>}
+                  {errors.adress && <p className="text-sm text-red-400">{errors.adress.message}</p>}
                 </div>
               </div>
 
@@ -195,6 +242,7 @@ const UserConfigPage = () => {
                     {...register("password")}
                     aria-invalid={errors.password ? "true" : "false"}
                   />
+                  <p className="text-xs text-zinc-400">Deixe em branco para manter a senha atual</p>
                   {errors.password && <p className="text-sm text-red-400">{errors.password.message}</p>}
                 </div>
               </div>
@@ -205,12 +253,12 @@ const UserConfigPage = () => {
 
           {/* INFORMAÇÕES DA EMPRESA */}
           <div>
-            <div className="bg-zinc-700/50 p-2 mb-4 rounded">
+           {/*  <div className="bg-zinc-700/50 p-2 mb-4 rounded">
               <h3 className="text-lg font-medium">Informações da Empresa</h3>
-            </div>
+            </div> */}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
+              {/* <div className="space-y-2">
                 <Label htmlFor="position">Cargo:</Label>
                 <Input
                   id="position"
@@ -220,9 +268,9 @@ const UserConfigPage = () => {
                   aria-invalid={errors.position ? "true" : "false"}
                 />
                 {errors.position && <p className="text-sm text-red-400">{errors.position.message}</p>}
-              </div>
+              </div> */}
 
-              <div className="space-y-2">
+             {/*  <div className="space-y-2">
                 <Label htmlFor="department">Departamento:</Label>
                 <Input
                   id="department"
@@ -232,7 +280,7 @@ const UserConfigPage = () => {
                   aria-invalid={errors.department ? "true" : "false"}
                 />
                 {errors.department && <p className="text-sm text-red-400">{errors.department.message}</p>}
-              </div>
+              </div> */}
 
               <div className="space-y-2 md:col-span-2">
                 <Label htmlFor="registration">Registro de Usuário:</Label>
@@ -251,7 +299,7 @@ const UserConfigPage = () => {
           <div className="flex justify-end items-center gap-2 pt-4">
             <div className="text-green-400 text-sm mr-auto">{isSaving ? "Salvando..." : ""}</div>
             <Button type="submit" disabled={isSaving} className="bg-green-700 hover:bg-green-800 text-white">
-              Salvar
+              {isSaving ? "Salvando..." : "Salvar"}
             </Button>
           </div>
         </form>

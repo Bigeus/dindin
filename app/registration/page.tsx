@@ -4,7 +4,6 @@ import { useState } from "react"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm, useFieldArray } from "react-hook-form"
 import { z } from "zod"
-import axios from "axios"
 import { toast, Toaster } from "sonner"
 import { Check, ChevronRight, Loader2 } from "lucide-react"
 
@@ -14,31 +13,37 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { Input } from "@/components/ui/input"
 import { useRouter } from "next/navigation"
 
-// Define the form schema with zod
+// Importando os serviços
+import userService, { User } from "@/services/userService"
+import accountService, { Account } from "@/services/accountService"
+
+// Definindo o esquema de validação com Zod
 const cashAccountSchema = z.object({
   name: z.string().min(2, "Nome da conta deve ter pelo menos 2 caracteres"),
   initialBalance: z.coerce.number().min(0, "Saldo inicial não pode ser negativo"),
   accountNumber: z.string().min(3, "Número da conta deve ter pelo menos 3 caracteres"),
+  institution: z.string().default("Pessoal"), // Adicionado para compatibilidade com a API
 })
 
 const userSchema = z.object({
-  // User Information
+  // Informações do Usuário
   name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres"),
   phone: z.string().min(10, "Telefone inválido").optional().or(z.literal("")),
-  address: z.string().min(5, "Endereço deve ter pelo menos 5 caracteres").optional().or(z.literal("")),
+  adress: z.string().min(5, "Endereço deve ter pelo menos 5 caracteres").optional().or(z.literal("")), // Mantido como 'adress' para compatibilidade com a API
   email: z.string().email("Email inválido"),
   password: z.string().min(6, "Senha deve ter pelo menos 6 caracteres"),
+  codUser: z.string().optional(), // Adicionado para compatibilidade com a API
 
-  // Company Information
+  // Informações da Empresa (não usadas, mas mantidas para compatibilidade com o formulário)
   position: z.string().min(2, "Cargo deve ter pelo menos 2 caracteres").optional().or(z.literal("")),
   department: z.string().min(2, "Departamento deve ter pelo menos 2 caracteres").optional().or(z.literal("")),
   registration: z.string().min(2, "Registro deve ter pelo menos 2 caracteres").optional().or(z.literal("")),
 
-  // Cash Account
+  // Contas Caixa
   cashAccounts: z.array(cashAccountSchema).min(1, "Pelo menos uma conta caixa é necessária"),
 })
 
-// Infer the type from the schema
+// Inferindo o tipo a partir do esquema
 type RegistrationFormValues = z.infer<typeof userSchema>
 
 const RegistrationPage = () => {
@@ -46,15 +51,16 @@ const RegistrationPage = () => {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const router = useRouter()
 
-  // Initialize form with default values
+  // Inicializando o formulário com valores padrão
   const form = useForm<RegistrationFormValues>({
     resolver: zodResolver(userSchema),
     defaultValues: {
       name: "",
       phone: "",
-      address: "",
+      adress: "",
       email: "",
       password: "",
+      codUser: "",
       position: "",
       department: "",
       registration: "",
@@ -63,60 +69,83 @@ const RegistrationPage = () => {
           name: "",
           initialBalance: 0,
           accountNumber: "",
+          institution: "Pessoal",
         },
       ],
     },
   })
 
-  // Use fieldArray to properly handle dynamic form fields
+  // Usando useFieldArray para lidar com campos dinâmicos
   const { fields, append, remove } = useFieldArray({
     control: form.control,
     name: "cashAccounts",
   })
 
-  // Real submission handler
-  const onSubmit = async (data: RegistrationFormValues) => {
-    setIsSubmitting(true)
+  // Função de envio do formulário - Adaptada para usar os serviços
+  // Função de envio do formulário corrigida
+const onSubmit = async (data: RegistrationFormValues) => {
+  setIsSubmitting(true)
 
-    try {
-        // TODO: ESCONDER ESSA URL DEPOIS COM .ENV
-        // TROCAR PARA A URL CORRETA
-      const response = await axios.post("http://localhost:8080/create-user", data)
-      toast.success("Usuário cadastrado com sucesso!")
-      console.log("Submission successful:", response.data)
-      router.push("/main")
-    } catch (error) {
-        console.error("Error submitting form:", error)
-        toast.error("Erro ao cadastrar usuário. Tente novamente.")
-    } finally {
-        setIsSubmitting(false)
+  try {
+    // Preparando o objeto de usuário para a API
+    const userData: User = {
+      name: data.name,
+      email: data.email,
+      phone: data.phone || "",
+      adress: data.adress || "",
+      password: data.password,
+      codUser: `USR${Date.now().toString().slice(-6)}`, // Gerando um código de usuário simples
     }
+
+    // 1. Criando o usuário
+    const createdUser = await userService.insert(userData)
+
+    if (!createdUser || !createdUser.id) {
+      throw new Error("Erro ao criar usuário: ID do usuário não retornado")
+    }
+
+    // 2. Criando as contas para o usuário
+    const accountPromises = data.cashAccounts.map(async (cashAccount) => {
+      // Simplificando a estrutura da conta para corresponder ao JSON que funciona
+      const accountData: Account = {
+        name: cashAccount.name,
+        balance: cashAccount.initialBalance,
+        institution: cashAccount.institution || "Pessoal",
+        client: {
+          id: createdUser.id
+        }
+      }
+
+      try {
+        // Aguardando o resultado de cada criação de conta
+        return await accountService.insert(accountData)
+      } catch (err) {
+        console.error(`Erro ao criar conta ${cashAccount.name}:`, err)
+        throw err
+      }
+    })
+
+    // Aguardando todas as contas serem criadas
+    const createdAccounts = await Promise.all(accountPromises)
+    console.log("Contas criadas:", createdAccounts)
+
+    toast.success("Usuário e contas cadastrados com sucesso!")
+    router.push("/main")
+  } catch (error) {
+    console.error("Erro ao enviar o formulário:", error)
+    toast.error(error instanceof Error ? error.message : "Erro ao cadastrar usuário. Tente novamente.")
+  } finally {
+    setIsSubmitting(false)
+  }
 }
 
-// Fake submission for testing
-const fakeOnSubmit = (data: RegistrationFormValues) => {
-    setIsSubmitting(true)
-    
-    // Simulate API call
-    setTimeout(() => {
-        console.log("Form data submitted (fake):", data)
-        toast.success("Usuário cadastrado com sucesso! (Modo de teste)")
-        router.push("/main")
-      setIsSubmitting(false)
-    }, 1500)
-  }
-
-  // Navigation between steps
+  // Função para navegação entre etapas
   const nextStep = async () => {
     if (currentStep === 1) {
-      // Validate user information fields before proceeding
-      const result = await form.trigger(["name", "email", "password", "phone", "address"])
-
-      if (result) setCurrentStep(2)
+      const result = await form.trigger(["name", "email", "password", "phone", "adress"])
+      if (result) setCurrentStep(3)
     } else if (currentStep === 2) {
-      // Validate company information fields before proceeding
       const result = await form.trigger(["position", "department", "registration"])
-
       if (result) setCurrentStep(3)
     }
   }
@@ -127,12 +156,12 @@ const fakeOnSubmit = (data: RegistrationFormValues) => {
     }
   }
 
-  // Add another cash account
+  // Função para adicionar uma nova conta caixa
   const addCashAccount = () => {
-    append({ name: "", initialBalance: 0, accountNumber: "" })
+    append({ name: "", initialBalance: 0, accountNumber: "", institution: "Pessoal" })
   }
 
-  // Remove a cash account
+  // Função para remover uma conta caixa
   const removeCashAccount = (index: number) => {
     if (fields.length > 1) {
       remove(index)
@@ -146,8 +175,7 @@ const fakeOnSubmit = (data: RegistrationFormValues) => {
       <Card className="w-full max-w-4xl mx-auto bg-zinc-800 border-zinc-700 text-white">
         <CardHeader className="pb-3">
           <CardTitle className="text-2xl font-bold text-white">Cadastro de Usuário</CardTitle>
-
-          {/* Step indicator */}
+          {/* Indicador de etapas */}
           <div className="flex items-center justify-between mt-4">
             <div className="flex items-center">
               <div
@@ -156,351 +184,202 @@ const fakeOnSubmit = (data: RegistrationFormValues) => {
                 {currentStep > 1 ? <Check className="h-5 w-5" /> : "1"}
               </div>
               <div className={`h-1 w-12 ${currentStep >= 2 ? "bg-cyan-600" : "bg-zinc-700"}`}></div>
-              <div
-                className={`rounded-full h-8 w-8 flex items-center justify-center ${currentStep >= 2 ? "bg-cyan-600" : "bg-zinc-700"}`}
-              >
-                {currentStep > 2 ? <Check className="h-5 w-5" /> : "2"}
-              </div>
               <div className={`h-1 w-12 ${currentStep >= 3 ? "bg-cyan-600" : "bg-zinc-700"}`}></div>
               <div
                 className={`rounded-full h-8 w-8 flex items-center justify-center ${currentStep >= 3 ? "bg-cyan-600" : "bg-zinc-700"}`}
               >
                 3
               </div>
+              <div className="text-sm text-zinc-400">Passo {currentStep} de 3</div>
             </div>
-            <div className="text-sm text-zinc-400">Passo {currentStep} de 3</div>
           </div>
         </CardHeader>
 
         <CardContent className="space-y-6">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-              {/* Step 1: User Information */}
+              {/* Etapa 1: Informações Pessoais */}
               {currentStep === 1 && (
-                <div className="space-y-6">
-                  <div className="bg-zinc-700/50 p-2 mb-4 rounded">
-                    <h3 className="text-lg font-medium">Informações Pessoais</h3>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <FormField
-                      control={form.control}
-                      name="name"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Nome</FormLabel>
-                          <FormControl>
-                            <Input
-                              placeholder="Insira seu nome completo"
-                              className="bg-zinc-700/30 border-zinc-600 focus-visible:ring-zinc-500"
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage className="text-red-400" />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="email"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Email</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="email"
-                              placeholder="seu@email.com"
-                              className="bg-zinc-700/30 border-zinc-600 focus-visible:ring-zinc-500"
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage className="text-red-400" />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="password"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Senha</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="password"
-                              placeholder="******"
-                              className="bg-zinc-700/30 border-zinc-600 focus-visible:ring-zinc-500"
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage className="text-red-400" />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="phone"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Telefone</FormLabel>
-                          <FormControl>
-                            <Input
-                              placeholder="(00) 00000-0000"
-                              className="bg-zinc-700/30 border-zinc-600 focus-visible:ring-zinc-500"
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage className="text-red-400" />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="address"
-                      render={({ field }) => (
-                        <FormItem className="md:col-span-2">
-                          <FormLabel>Endereço</FormLabel>
-                          <FormControl>
-                            <Input
-                              placeholder="Rua, número, bairro, cidade"
-                              className="bg-zinc-700/30 border-zinc-600 focus-visible:ring-zinc-500"
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage className="text-red-400" />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Nome */}
+                  <FormField
+                    control={form.control}
+                    name="name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Nome</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Nome completo" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  {/* Email */}
+                  <FormField
+                    control={form.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Email</FormLabel>
+                        <FormControl>
+                          <Input type="email" placeholder="exemplo@email.com" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  {/* Senha */}
+                  <FormField
+                    control={form.control}
+                    name="password"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Senha</FormLabel>
+                        <FormControl>
+                          <Input type="password" placeholder="******" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  {/* Telefone */}
+                  <FormField
+                    control={form.control}
+                    name="phone"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Telefone</FormLabel>
+                        <FormControl>
+                          <Input placeholder="(00) 00000-0000" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  {/* Endereço */}
+                  <FormField
+                    control={form.control}
+                    name="adress"
+                    render={({ field }) => (
+                      <FormItem className="md:col-span-2">
+                        <FormLabel>Endereço</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Rua, nº, cidade" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 </div>
               )}
 
-              {/* Step 2: Company Information */}
-              {currentStep === 2 && (
-                <div className="space-y-6">
-                  <div className="bg-zinc-700/50 p-2 mb-4 rounded">
-                    <h3 className="text-lg font-medium">Informações da Empresa</h3>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <FormField
-                      control={form.control}
-                      name="position"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Cargo</FormLabel>
-                          <FormControl>
-                            <Input
-                              placeholder="Seu cargo na empresa"
-                              className="bg-zinc-700/30 border-zinc-600 focus-visible:ring-zinc-500"
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage className="text-red-400" />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="department"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Departamento</FormLabel>
-                          <FormControl>
-                            <Input
-                              placeholder="Seu departamento"
-                              className="bg-zinc-700/30 border-zinc-600 focus-visible:ring-zinc-500"
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage className="text-red-400" />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="registration"
-                      render={({ field }) => (
-                        <FormItem className="md:col-span-2">
-                          <FormLabel>Registro de Usuário</FormLabel>
-                          <FormControl>
-                            <Input
-                              placeholder="Código de registro"
-                              className="bg-zinc-700/30 border-zinc-600 focus-visible:ring-zinc-500"
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage className="text-red-400" />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Step 3: Cash Accounts */}
+              {/* Etapa 3: Contas Caixa */}
               {currentStep === 3 && (
-                <div className="space-y-6">
-                  <div className="bg-zinc-700/50 p-2 mb-4 rounded">
-                    <h3 className="text-lg font-medium">Contas Caixa</h3>
-                    <p className="text-sm text-zinc-400 mt-1">Adicione pelo menos uma conta caixa</p>
-                  </div>
-
+                <div className="space-y-4">
                   {fields.map((field, index) => (
-                    <div key={field.id} className="space-y-4 p-4 border border-zinc-700 rounded-md">
+                    <div key={field.id} className="border p-4 rounded-md space-y-4 bg-zinc-700/40">
                       <div className="flex justify-between items-center">
-                        <h4 className="font-medium">Conta {index + 1}</h4>
-                        {fields.length > 1 && (
-                          <Button
-                            type="button"
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => removeCashAccount(index)}
-                          >
-                            Remover
-                          </Button>
-                        )}
+                        <span className="font-semibold">Conta {index + 1}</span>
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => removeCashAccount(index)}
+                        >
+                          Remover
+                        </Button>
                       </div>
-
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <FormField
                           control={form.control}
                           name={`cashAccounts.${index}.name`}
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Nome da Conta</FormLabel>
+                              <FormLabel>Nome</FormLabel>
                               <FormControl>
-                                <Input
-                                  placeholder="Ex: Conta Principal"
-                                  className="bg-zinc-700/30 border-zinc-600 focus-visible:ring-zinc-500"
-                                  {...field}
-                                />
+                                <Input placeholder="Conta Principal" {...field} />
                               </FormControl>
-                              <FormMessage className="text-red-400" />
+                              <FormMessage />
                             </FormItem>
                           )}
                         />
-
                         <FormField
                           control={form.control}
                           name={`cashAccounts.${index}.accountNumber`}
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Número da Conta</FormLabel>
+                              <FormLabel>Número</FormLabel>
                               <FormControl>
-                                <Input
-                                  placeholder="Ex: 12345"
-                                  className="bg-zinc-700/30 border-zinc-600 focus-visible:ring-zinc-500"
-                                  {...field}
-                                />
+                                <Input placeholder="12345" {...field} />
                               </FormControl>
-                              <FormMessage className="text-red-400" />
+                              <FormMessage />
                             </FormItem>
                           )}
                         />
-
                         <FormField
                           control={form.control}
                           name={`cashAccounts.${index}.initialBalance`}
                           render={({ field }) => (
-                            <FormItem className="md:col-span-2">
+                            <FormItem>
                               <FormLabel>Saldo Inicial</FormLabel>
                               <FormControl>
-                                <Input
-                                  type="number"
-                                  placeholder="0.00"
-                                  className="bg-zinc-700/30 border-zinc-600 focus-visible:ring-zinc-500"
-                                  {...field}
-                                />
+                                <Input type="number" placeholder="0.00" {...field} />
                               </FormControl>
-                              <FormDescription className="text-zinc-400">
-                                Valor inicial disponível nesta conta
-                              </FormDescription>
-                              <FormMessage className="text-red-400" />
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name={`cashAccounts.${index}.institution`}
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Instituição</FormLabel>
+                              <FormControl>
+                                <Input placeholder="Banco ou Instituição" {...field} />
+                              </FormControl>
+                              <FormMessage />
                             </FormItem>
                           )}
                         />
                       </div>
                     </div>
                   ))}
-
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="w-full border-dashed border-zinc-600 bg-zinc-700/50 hover:bg-zinc-700 text-white"
-                    onClick={addCashAccount}
-                  >
-                    + Adicionar outra conta
+                  <Button type="button" variant="outline" onClick={addCashAccount}>
+                    + Adicionar conta
                   </Button>
                 </div>
               )}
 
-              {/* Navigation buttons */}
+              {/* Botões de navegação */}
               <div className="flex justify-between pt-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={prevStep}
-                  disabled={currentStep === 1}
-                  className="border-zinc-600 bg-zinc-700/50 hover:bg-zinc-700 text-white"
-                >
-                  Voltar
-                </Button>
+                <div></div>
 
-                <div className="flex gap-2">
-                  {currentStep < 3 ? (
-                    <Button type="button" onClick={nextStep} className="bg-cyan-600 hover:bg-cyan-700 text-white">
-                      Próximo
-                      <ChevronRight className="ml-1 h-4 w-4" />
-                    </Button>
-                  ) : (
-                    <>
-                      <Button
-                        type="button"
-                        onClick={() => form.handleSubmit(fakeOnSubmit)()}
-                        className="bg-amber-600 hover:bg-amber-700 text-white"
-                        disabled={isSubmitting}
-                      >
-                        {isSubmitting ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Processando
-                          </>
-                        ) : (
-                          "Testar Envio"
-                        )}
-                      </Button>
-
-                      <Button
-                        type="submit"
-                        className="bg-cyan-600 hover:bg-cyan-700 text-white"
-                        disabled={isSubmitting}
-                      >
-                        {isSubmitting ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Processando
-                          </>
-                        ) : (
-                          "Finalizar Cadastro"
-                        )}
-                      </Button>
-                    </>
-                  )}
-                </div>
+                {currentStep < 3 ? (
+                  <Button type="button" onClick={nextStep}>
+                    Próximo <ChevronRight className="ml-1 h-4 w-4" />
+                  </Button>
+                ) : (
+                  <Button type="submit" disabled={isSubmitting}>
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Enviando...
+                      </>
+                    ) : (
+                      "Finalizar Cadastro"
+                    )}
+                  </Button>
+                )}
               </div>
             </form>
           </Form>
         </CardContent>
       </Card>
+      <Toaster />
     </div>
   )
 }
 
 export default RegistrationPage
-
