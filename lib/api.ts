@@ -3,7 +3,7 @@ import Cookies from "js-cookie"
 
 // Constantes
 const TOKEN_KEY = "dindin_auth_token"
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://cashchego-backend-bigeus.onrender.com"
 
 // Criar instância do axios
 const api = axios.create({

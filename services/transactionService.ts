@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { AccountSchema } from './accountService';
 
 // Definindo a URL base da API
-const API_BASE_URL = 'http://localhost:8080';
+const API_BASE_URL = 'https://cashchego-backend-bigeus.onrender.com';
 
 // Schemas Zod para validação
 export const TransactionCategorySchema = z.object({

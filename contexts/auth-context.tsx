@@ -80,7 +80,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(true)
 
     try {
-      const response = await axios.post("http://localhost:8080/login", { email, password })
+      const response = await axios.post("https://cashchego-backend-bigeus.onrender.com/login", { email, password })
       const { token, user } = response.data
 
       // Armazenar token e dados do usuário
