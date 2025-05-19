@@ -29,12 +29,12 @@ export const TransactionSchema = z.object({
   creationDate: z.string().optional().or(z.date()), // Pode ser fornecido como string ou Date
   balanceAfter: z.number().optional(),
   type: TransactionTypeEnum,
-  category: z.union([z.number(), TransactionCategorySchema]).optional(), // Pode ser ID ou objeto completo
+  category: z.union([z.number(), TransactionCategorySchema]).optional(), // Alterado para category
   account: AccountSchema.optional(),
   accountId: z.number().optional(), // Para facilitar a criação de transações
   report: ReportSchema.optional(),
-  description: z.string().optional(), // Adicionado campo de descrição
-  responsible: z.string().optional() // Adicionado campo de responsável
+  description: z.string().optional(),
+  responsible: z.string().optional()
 });
 
 // Tipos extraídos dos schemas Zod
@@ -59,9 +59,9 @@ export class TransactionMapper {
   static mapTypeToBackend(type: string): TransactionType {
     switch (type) {
       case 'entrada':
-        return 'RECEITA';
+        return 'REVENUE';
       case 'saida':
-        return 'DESPESA';
+        return 'EXPENSE';
       default:
         return type as TransactionType;
     }
@@ -180,9 +180,9 @@ class TransactionService {
     accountId: string;
     type: 'entrada' | 'saida';
     value: number;
-    description: string;
-    responsible: string;
-    categoryId?: number;
+    description?: string;
+    responsible?: string;
+    categoryId?: number; // Alterado para categoryId
   }): Promise<Transaction> {
     try {
       // Obter dados do usuário do localStorage
@@ -196,7 +196,7 @@ class TransactionService {
         accountId: parseInt(formData.accountId),
         description: formData.description,
         responsible: formData.responsible,
-        category: formData.categoryId
+        category: formData.categoryId // Alterado para category
       };
       
       return await this.insert(transactionData as Transaction);
@@ -235,6 +235,12 @@ class TransactionService {
     // Garante que creationDate está no formato ISO se for uma Date
     if (preparedData.creationDate instanceof Date) {
       preparedData.creationDate = preparedData.creationDate.toISOString();
+    }
+    
+    // Se o objeto category for um número (ID), mantém como está
+    // Se for um objeto, garante que está formatado corretamente
+    if (preparedData.category && typeof preparedData.category === 'object' && 'id' in preparedData.category) {
+      preparedData.category = preparedData.category.id;
     }
     
     return preparedData;

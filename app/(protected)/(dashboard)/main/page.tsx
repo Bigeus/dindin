@@ -17,10 +17,23 @@ import Image from "next/image"
 import graph from "../../../../public/graph.svg"
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import accountService from "@/services/accountService"
+import { Account } from "@/services/accountService"
+import { Loader2 } from "lucide-react"
 
 export default function Home() {
   const [isOpen, setIsOpen] = useState(false)
   const router = useRouter()
+  const [accounts, setAccounts] = useState<Account[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [totalBalance, setTotalBalance] = useState(0)
+  const [totalRevenue, setTotalRevenue] = useState(0)
+  const [totalExpense, setTotalExpense] = useState(0)
+  const [recentTransactions, setRecentTransactions] = useState<any[]>([])
+  
+  // Novos estados para comparação mês a mês
+  const [revenueGrowth, setRevenueGrowth] = useState(0)
+  const [expenseGrowth, setExpenseGrowth] = useState(0)
 
   // Open dialog automatically when component mounts if not seen before
   useEffect(() => {
@@ -38,13 +51,134 @@ export default function Home() {
     }
   }, [])
 
-  // Transaction data
-  const transactions = [
-    { date: "10/10/24", entrada: "+100,00", saida: "-50,00" },
-    { date: "09/10/24", entrada: "+200,00", saida: "-65,00" },
-    { date: "08/10/24", entrada: "+150,00", saida: "-20,00" },
-    { date: "07/10/24", entrada: "+300,00", saida: "-100,00" },
-  ]
+  // Fetch accounts and calculate financial data
+  useEffect(() => {
+    const fetchAccountsData = async () => {
+      try {
+        setIsLoading(true)
+        const accountsData = await accountService.findAll()
+        
+        // Get user from localStorage to filter accounts
+        const userJson = localStorage.getItem("dindin_user")
+        if (!userJson) {
+          router.push("/login")
+          return
+        }
+        
+        const user = JSON.parse(userJson)
+        
+        // Filter accounts belonging to the current user
+        const userAccounts = accountsData.filter(account => 
+          account.client && account.client.id === user.id
+        )
+        
+        setAccounts(userAccounts)
+        
+        // Calculate total balance
+        const balance = userAccounts.reduce((sum, account) => sum + account.balance, 0)
+        setTotalBalance(balance)
+        
+        // Process all transactions from all accounts
+        const allTransactions: any[] = []
+        let totalRev = 0
+        let totalExp = 0
+        
+        // Variáveis para análise mês a mês
+        let currentMonthRev = 0
+        let currentMonthExp = 0
+        let lastMonthRev = 0
+        let lastMonthExp = 0
+        
+        // Obter mês atual e mês anterior
+        const today = new Date()
+        const currentMonth = today.getMonth()
+        const currentYear = today.getFullYear()
+        
+        // Calcular primeiro e último dia do mês atual e do mês anterior
+        const firstDayCurrentMonth = new Date(currentYear, currentMonth, 1)
+        const lastDayCurrentMonth = new Date(currentYear, currentMonth + 1, 0)
+        
+        const firstDayLastMonth = new Date(currentYear, currentMonth - 1, 1)
+        const lastDayLastMonth = new Date(currentYear, currentMonth, 0)
+        
+        userAccounts.forEach(account => {
+          if (account.transactions && account.transactions.length > 0) {
+            // Add account transactions to the list
+            account.transactions.forEach(transaction => {
+              allTransactions.push({
+                ...transaction,
+                accountName: account.name
+              })
+              
+              // Calculate totals by type
+              if (transaction.type === "REVENUE") {
+                totalRev += transaction.ammount
+              } else if (transaction.type === "EXPENSE") {
+                totalExp += transaction.ammount
+              }
+              
+              // Análise por período
+              const transactionDate = new Date(transaction.creationDate)
+              
+              // Verificar se é do mês atual
+              if (transactionDate >= firstDayCurrentMonth && transactionDate <= lastDayCurrentMonth) {
+                if (transaction.type === "REVENUE") {
+                  currentMonthRev += transaction.ammount
+                } else if (transaction.type === "EXPENSE") {
+                  currentMonthExp += transaction.ammount
+                }
+              }
+              
+              // Verificar se é do mês anterior
+              if (transactionDate >= firstDayLastMonth && transactionDate <= lastDayLastMonth) {
+                if (transaction.type === "REVENUE") {
+                  lastMonthRev += transaction.ammount
+                } else if (transaction.type === "EXPENSE") {
+                  lastMonthExp += transaction.ammount
+                }
+              }
+            })
+          }
+        })
+        
+        setTotalRevenue(totalRev)
+        setTotalExpense(totalExp)
+        
+        // Calcular crescimento percentual
+        const calcPercentageChange = (current: number, previous: number) => {
+          if (previous === 0) return current > 0 ? 100 : 0
+          return ((current - previous) / previous) * 100
+        }
+        
+        setRevenueGrowth(calcPercentageChange(currentMonthRev, lastMonthRev))
+        setExpenseGrowth(calcPercentageChange(currentMonthExp, lastMonthExp))
+        
+        // Sort transactions by date (recent first) and get top 4
+        const sortedTransactions = allTransactions.sort((a, b) => 
+          new Date(b.creationDate).getTime() - new Date(a.creationDate).getTime()
+        ).slice(0, 4)
+        
+        setRecentTransactions(sortedTransactions)
+      } catch (error) {
+        console.error("Error fetching accounts:", error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    
+    fetchAccountsData()
+  }, [router])
+
+  // Format date for transaction display (DD/MM/YY)
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString)
+    return `${date.getDate().toString().padStart(2, '0')}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getFullYear().toString().substring(2)}`
+  }
+  
+  // Format number to currency
+  const formatCurrency = (value: number) => {
+    return value.toFixed(2).replace('.', ',')
+  }
 
   // Função para logout que limpa o localStorage
   const eraseUserStorage = () => {
@@ -78,19 +212,19 @@ export default function Home() {
             <div className="space-y-4">
               <div className="bg-zinc-700 p-4 rounded-lg">
                 <h3 className="font-medium text-green-400">Receitas</h3>
-                <p className="text-2xl font-bold">R$ 5.250,00</p>
-                <p className="text-sm text-green-400">+12% em relação ao mês anterior</p>
+                <p className="text-2xl font-bold">R$ {formatCurrency(totalRevenue)}</p>
+                <p className="text-sm text-green-400">{revenueGrowth >= 0 ? "+" : ""}{revenueGrowth.toFixed(1)}% em relação ao mês anterior</p>
               </div>
               
               <div className="bg-zinc-700 p-4 rounded-lg">
                 <h3 className="font-medium text-red-400">Despesas</h3>
-                <p className="text-2xl font-bold">R$ 2.980,00</p>
-                <p className="text-sm text-red-400">+5% em relação ao mês anterior</p>
+                <p className="text-2xl font-bold">R$ {formatCurrency(totalExpense)}</p>
+                <p className="text-sm text-red-400">{expenseGrowth >= 0 ? "+" : ""}{expenseGrowth.toFixed(1)}% em relação ao mês anterior</p>
               </div>
               
               <div className="bg-zinc-700 p-4 rounded-lg">
                 <h3 className="font-medium">Saldo Final</h3>
-                <p className="text-2xl font-bold text-blue-400">R$ 2.270,00</p>
+                <p className="text-2xl font-bold text-blue-400">R$ {formatCurrency(totalRevenue - totalExpense)}</p>
                 <p className="text-sm">Melhor que 75% dos meses anteriores</p>
               </div>
             </div>
@@ -118,45 +252,55 @@ export default function Home() {
 
       {/* Saldo Total */}
       <div className="lg:col-span-2 bg-zinc-800 rounded-lg p-4">
-        <div className="mb-4">
-          <span className="text-zinc-400">Saldo Total: R$</span>
-          <h2 className="text-5xl font-bold">3.298,66</h2>
-        </div>
+        {isLoading ? (
+          <div className="flex justify-center items-center h-64">
+            <Loader2 className="h-12 w-12 animate-spin text-blue-500" />
+          </div>
+        ) : (
+          <>
+            <div className="mb-4">
+              <span className="text-zinc-400">Saldo Total: R$</span>
+              <h2 className="text-5xl font-bold">{formatCurrency(totalBalance)}</h2>
+            </div>
 
-        <div className="mt-8">
-          <h3 className="text-xl mb-4">Transações Recentes</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 mb-2">
-            {transactions.map((transaction, index) => (
-              <TransactionCard
-                key={index}
-                date={transaction.date}
-                entrada={transaction.entrada}
-                saida={transaction.saida}
-                index={index}
-              />
-            ))}
-          </div>
-          {/* BOTTOM HALF */}
-          <div className="min-w-full flex flex-row justify-center gap-3">
-            <Card className="p-0 w-full bg-zinc-700 text-white border-none">
-              <h3 className="ms-3">Histórico</h3>
-              <ScrollArea className="h-[200px] pe-3 ps-1" style={{ scrollbarColor: "white" }} type="always">
-                <Card className="bg-green-700 h-5 rounded-md">Nota 007-09</Card>
-                <Card className="bg-red-400 h-5 rounded-md">Nota 007-09</Card>
-                <Card className="bg-green-700 rounded-md">Nota 007-09</Card>
-                <Card className="bg-red-400 h-5 rounded-md">Nota 007-09</Card>
-                <Card className="bg-green-700 rounded-md">Nota 007-09</Card>
-                <Card className="bg-red-400 h-5 rounded-md">Nota 007-09</Card>
-                <Card className="bg-green-700 rounded-md">Nota 007-09</Card>
-                <Card className="bg-red-400 h-5 rounded-md">Nota 007-09</Card>
-                <Card className="bg-green-700 rounded-md">Nota 007-09</Card>
-                <Card className="bg-red-400 h-5 rounded-md">Nota 007-09</Card>
-                <Card className="bg-green-700 rounded-md">Nota 007-09</Card>
-                <Card className="bg-red-400 h-5 rounded-md">Nota 007-09</Card>
-              </ScrollArea>
-            </Card>
-          </div>
-        </div>
+            <div className="mt-8">
+              <h3 className="text-xl mb-4">Transações Recentes</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 mb-2">
+                {recentTransactions.map((transaction, index) => (
+                  <TransactionCard
+                    key={transaction.id}
+                    date={formatDate(transaction.creationDate)}
+                    entrada={transaction.type === "REVENUE" ? `+${formatCurrency(transaction.ammount)}` : "+0,00"}
+                    saida={transaction.type === "EXPENSE" ? `-${formatCurrency(transaction.ammount)}` : "-0,00"}
+                    protocol={`TX${transaction.id}`}
+                    index={index}
+                  />
+                ))}
+              </div>
+              {/* BOTTOM HALF */}
+              <div className="min-w-full flex flex-row justify-center gap-3">
+                <Card className="p-0 w-full bg-zinc-700 text-white border-none">
+                  <h3 className="ms-3">Histórico</h3>
+                  <ScrollArea className="h-[200px] pe-3 ps-1" style={{ scrollbarColor: "white" }} type="always">
+                    {accounts.length > 0 && accounts.flatMap(account => 
+                      account.transactions || []
+                    )
+                    .sort((a, b) => new Date(b.creationDate).getTime() - new Date(a.creationDate).getTime())
+                    .map(transaction => (
+                      <Card 
+                        key={transaction.id} 
+                        className={`${transaction.type === "REVENUE" ? "bg-green-700" : "bg-red-400"} h-5 rounded-md mb-1`}
+                      >
+                        {transaction.type === "REVENUE" ? "+ " : "- "}
+                        R$ {formatCurrency(transaction.ammount)} - {formatDate(transaction.creationDate)}
+                      </Card>
+                    ))}
+                  </ScrollArea>
+                </Card>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Right side panels */}
@@ -172,13 +316,23 @@ export default function Home() {
 
         {/* Indicadores */}
         <div>
-          {/* Green Progress Indicator */}
+          {/* Green Progress Indicator (Revenue) */}
           <div className="flex pb-3">
-            <ProgressIndicator value={50} variant="green" />
+            <ProgressIndicator 
+              value={totalRevenue > 0 ? Math.min((totalRevenue / (totalRevenue + totalExpense)) * 100, 100) : 0} 
+              variant="green"
+              amount={totalRevenue}
+              percentage={revenueGrowth}
+            />
           </div>
-          {/* Red Progress Indicator */}
+          {/* Red Progress Indicator (Expense) */}
           <div className="flex">
-            <ProgressIndicator value={35} variant="red" />
+            <ProgressIndicator 
+              value={totalExpense > 0 ? Math.min((totalExpense / (totalRevenue + totalExpense)) * 100, 100) : 0} 
+              variant="red"
+              amount={totalExpense}
+              percentage={expenseGrowth}
+            />
           </div>
         </div>
       </div>

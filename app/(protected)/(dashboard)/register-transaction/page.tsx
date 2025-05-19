@@ -11,7 +11,6 @@ import { CalendarIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
@@ -41,8 +40,6 @@ const transactionSchema = z.object({
       invalid_type_error: "O valor deve ser um número",
     })
     .positive("O valor deve ser positivo"),
-  /* description: z.string().min(5, "A descrição deve ter pelo menos 5 caracteres"),
-  responsible: z.string().min(2, "O responsável deve ter pelo menos 2 caracteres"), */
   categoryId: z.coerce.number({
     required_error: "A categoria é obrigatória",
   }),
@@ -160,7 +157,7 @@ export default function RegisterTransactionPage() {
         ammount: data.value,
         balanceAfter: balanceAfter,
         type: data.type,
-        category: data.categoryId,
+        category: data.categoryId, // Alterado de category para category
         accountId: Number(data.accountId),
         account: {
           id: selectedAccount.id,
@@ -287,7 +284,7 @@ export default function RegisterTransactionPage() {
                     )}
                   />
 
-                  {/* Category Selection */}
+                  {/* Category Selection - Renamed from categoryId to categoryId */}
                   <FormField
                     control={form.control}
                     name="categoryId"
@@ -344,44 +341,6 @@ export default function RegisterTransactionPage() {
                     </FormItem>
                   )}
                 />
-
-                {/* Description Field */}
-               {/*  <FormField
-                  control={form.control}
-                  name="description"
-                  render={({ field }) => (
-                    <FormItem className="text-white">
-                      <FormLabel>Descrição:</FormLabel>
-                      <FormControl>
-                        <Textarea
-                          placeholder="Digite uma breve descrição..."
-                          className="resize-none h-24 bg-zinc-700/50 border-zinc-600"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                /> */}
-
-                {/* Responsible Field */}
-                {/* <FormField
-                  control={form.control}
-                  name="responsible"
-                  render={({ field }) => (
-                    <FormItem className="text-white">
-                      <FormLabel>Responsável:</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="Digite o nome do Responsável do registro..."
-                          className="bg-zinc-700/50 border-zinc-600"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                /> */}
 
                 {/* Form Actions */}
                 <div className="flex justify-center space-x-4 pt-4">
@@ -452,36 +411,6 @@ export default function RegisterTransactionPage() {
                 </div>
               )}
 
-              {/* <div>
-                <p className="text-sm font-medium mb-1">Descrição:</p>
-                <div className="space-y-1">
-                  {watchedValues.description ? (
-                    watchedValues.description.split("\n").map((line, i) => (
-                      <div key={i} className="h-4 bg-gray-600 rounded w-full">
-                        <div className="text-xs text-white px-2">{line || " "}</div>
-                      </div>
-                    ))
-                  ) : (
-                    <>
-                      <div className="h-4 bg-gray-300 rounded w-full"></div>
-                      <div className="h-4 bg-gray-300 rounded w-3/4"></div>
-                      <div className="h-4 bg-gray-300 rounded w-5/6"></div>
-                    </>
-                  )}
-                </div>
-              </div> */}
-
-             {/*  <div>
-                <p className="text-sm font-medium mb-1">Responsável:</p>
-                <div className="h-4 bg-gray-300 rounded w-3/5">
-                  {watchedValues.responsible && (
-                    <div className="bg-gray-600 h-full rounded text-xs text-white flex items-center px-2">
-                      {watchedValues.responsible}
-                    </div>
-                  )}
-                </div>
-              </div> */}
-
               <div>
                 <p className="text-sm font-medium mb-1">Conta:</p>
                 <div className="h-4 bg-gray-300 rounded w-2/5">
@@ -508,4 +437,5 @@ export default function RegisterTransactionPage() {
         </Card>
       </div>
     </div>
-  )}
+  )
+}

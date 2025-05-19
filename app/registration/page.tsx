@@ -346,7 +346,7 @@ const onSubmit = async (data: RegistrationFormValues) => {
                       </div>
                     </div>
                   ))}
-                  <Button type="button" variant="outline" onClick={addCashAccount}>
+                  <Button type="button" onClick={addCashAccount}>
                     + Adicionar conta
                   </Button>
                 </div>
