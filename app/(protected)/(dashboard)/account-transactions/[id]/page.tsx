@@ -62,15 +62,38 @@ export default function AccountTransactions() {
   const params = useParams()
   const accountId = parseInt(params.id as string)
 
-  // Estados
-  const [account, setAccount] = useState(null)
+  // Define a interface para o tipo de conta
+  interface Account {
+    id?: number;
+    name: string;
+    balance: number;
+    institution: string;
+    client?: { id: number };
+    transactions?: Transaction[];
+  }
+
+  // Define a interface para transações
+  interface Transaction {
+    id: number;
+    description: string;
+    ammount: number;
+    type: "REVENUE" | "EXPENSE" | "TRANSFER";
+    creationDate: string;
+    cathegory?: {
+      id: number;
+      name: string;
+    };
+  }
+
+  // Estados com tipos corretos
+  const [account, setAccount] = useState<Account | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [transactionType, setTransactionType] = useState("all")
   const [dateRange, setDateRange] = useState("all")
   const [sortOrder, setSortOrder] = useState("newest")
-  const [transactionToDelete, setTransactionToDelete] = useState(null)
+  const [transactionToDelete, setTransactionToDelete] = useState<number | null>(null)
   const [openDialog, setOpenDialog] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 
@@ -87,7 +110,7 @@ export default function AccountTransactions() {
   const [newTransaction, setNewTransaction] = useState({
     description: "",
     ammount: "",
-    type: "EXPENSE",
+    type: "EXPENSE" as "EXPENSE" | "REVENUE" | "TRANSFER",
     cathegory: {
       id: "1",
       name: "Salário"
@@ -103,14 +126,10 @@ export default function AccountTransactions() {
         const data = await accountService.findById(accountId)
         setAccount(data)
         setError(null)
-      } catch (err) {
+      } catch (err: any) {
         console.error("Erro ao buscar dados da conta:", err)
         setError(err.message || "Erro ao carregar dados da conta")
-        toast({
-          title: "Erro",
-          description: "Não foi possível carregar os dados da conta",
-          variant: "destructive"
-        })
+        
       } finally {
         setIsLoading(false)
       }
@@ -122,7 +141,7 @@ export default function AccountTransactions() {
   }, [accountId])
 
   // Manipuladores de eventos
-  const handleTransactionInputChange = (e) => {
+  const handleTransactionInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
     if (name === "ammount") {
       setNewTransaction(prev => ({
@@ -137,7 +156,7 @@ export default function AccountTransactions() {
     }
   }
 
-  const handleSelectChange = (name, value) => {
+  const handleSelectChange = (name: string, value: string) => {
     if (name === "cathegory") {
       const selectedCategory = categories.find(cat => cat.id === parseInt(value))
       setNewTransaction(prev => ({
@@ -152,100 +171,6 @@ export default function AccountTransactions() {
         ...prev,
         [name]: value
       }))
-    }
-  }
-
-  // Criar nova transação
-  const handleCreateTransaction = async () => {
-    try {
-      const amount = parseFloat(newTransaction.ammount)
-      if (isNaN(amount)) {
-        toast({
-          title: "Erro",
-          description: "Valor inválido",
-          variant: "destructive"
-        })
-        return
-      }
-
-      const transactionData = {
-        description: newTransaction.description,
-        ammount: amount,
-        type: newTransaction.type,
-        creationDate: new Date(newTransaction.date).toISOString(),
-        cathegory: {
-          id: parseInt(newTransaction.cathegory.id),
-          name: categories.find(c => c.id === parseInt(newTransaction.cathegory.id))?.name || ""
-        },
-        account: { id: accountId }
-      }
-
-      // Chamada à API
-      const response = await accountService.createTransaction(accountId, transactionData)
-
-      // Atualizar estado local
-      setAccount(prev => ({
-        ...prev,
-        transactions: [response, ...prev.transactions],
-        balance: newTransaction.type === "REVENUE"
-          ? prev.balance + response.ammount
-          : prev.balance - response.ammount
-      }))
-
-      // Resetar formulário
-      setNewTransaction({
-        description: "",
-        ammount: "",
-        type: "EXPENSE",
-        cathegory: { id: "1", name: "Salário" },
-        date: new Date().toISOString().split('T')[0]
-      })
-
-      setOpenDialog(false)
-      toast({
-        title: "Sucesso",
-        description: "Transação criada com sucesso",
-        variant: "default"
-      })
-    } catch (err) {
-      console.error("Erro ao criar transação:", err)
-      toast({
-        title: "Erro",
-        description: err.message || "Não foi possível criar a transação",
-        variant: "destructive"
-      })
-    }
-  }
-
-  // Excluir transação
-  const handleDelete = async (transactionId) => {
-    try {
-      const transaction = account.transactions.find(t => t.id === transactionId)
-      if (!transaction) return
-
-      await accountService.deleteTransaction(accountId, transactionId)
-
-      setAccount(prev => ({
-        ...prev,
-        transactions: prev.transactions.filter(t => t.id !== transactionId),
-        balance: transaction.type === "REVENUE"
-          ? prev.balance - transaction.ammount
-          : prev.balance + transaction.ammount
-      }))
-
-      setDeleteDialogOpen(false)
-      toast({
-        title: "Sucesso",
-        description: "Transação excluída com sucesso",
-        variant: "default"
-      })
-    } catch (err) {
-      console.error("Erro ao excluir transação:", err)
-      toast({
-        title: "Erro",
-        description: "Não foi possível excluir a transação",
-        variant: "destructive"
-      })
     }
   }
 
@@ -291,9 +216,9 @@ export default function AccountTransactions() {
     // Ordenação
     filtered.sort((a, b) => {
       if (sortOrder === "newest") {
-        return new Date(b.creationDate) - new Date(a.creationDate)
+        return new Date(b.creationDate).getTime() - new Date(a.creationDate).getTime()
       } else if (sortOrder === "oldest") {
-        return new Date(a.creationDate) - new Date(b.creationDate)
+        return new Date(a.creationDate).getTime() - new Date(b.creationDate).getTime()
       } else if (sortOrder === "highestAmount") {
         return b.ammount - a.ammount
       } else if (sortOrder === "lowestAmount") {
@@ -315,7 +240,7 @@ export default function AccountTransactions() {
   const balance = totalRevenue - totalExpenses
 
   // Formatar data
-  const formatDate = (dateString) => {
+  const formatDate = (dateString: string) => {
     if (!dateString) return ""
     return new Date(dateString).toLocaleDateString('pt-BR', {
       day: '2-digit',
@@ -392,108 +317,6 @@ export default function AccountTransactions() {
               Nova Transação
             </Button>
           </Link>
-          {/* <Dialog open={openDialog} onOpenChange={setOpenDialog}>
-            <DialogTrigger asChild>
-            </DialogTrigger>
-            <DialogContent className="bg-zinc-800 text-white border-zinc-700">
-              <DialogHeader>
-                <DialogTitle>Registrar Nova Transação</DialogTitle>
-                <DialogDescription className="text-zinc-400">
-                  Preencha os dados da transação financeira.
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className="grid gap-4 py-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="description">Descrição</Label>
-                  <Input
-                    id="description"
-                    name="description"
-                    placeholder="Ex: Compras no Supermercado"
-                    className="bg-zinc-700 border-zinc-600"
-                    value={newTransaction.description}
-                    onChange={handleTransactionInputChange}
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="ammount">Valor (R$)</Label>
-                    <Input
-                      id="ammount"
-                      name="ammount"
-                      type="number"
-                      step="0.01"
-                      placeholder="0,00"
-                      className="bg-zinc-700 border-zinc-600"
-                      value={newTransaction.ammount}
-                      onChange={handleTransactionInputChange}
-                    />
-                  </div>
-
-                  <div className="grid gap-2">
-                    <Label htmlFor="type">Tipo</Label>
-                    <Select
-                      value={newTransaction.type}
-                      onValueChange={(value) => handleSelectChange("type", value)}
-                    >
-                      <SelectTrigger className="bg-zinc-700 border-zinc-600">
-                        <SelectValue placeholder="Selecione o tipo" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-zinc-800 border-zinc-700 text-white">
-                        <SelectItem value="EXPENSE">Despesa</SelectItem>
-                        <SelectItem value="REVENUE">Receita</SelectItem>
-                        <SelectItem value="TRANSFER">Transferência</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="cathegory">Categoria</Label>
-                    <Select
-                      value={newTransaction.cathegory.id}
-                      onValueChange={(value) => handleSelectChange("cathegory", value)}
-                    >
-                      <SelectTrigger className="bg-zinc-700 border-zinc-600">
-                        <SelectValue placeholder="Selecione a categoria" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-zinc-800 border-zinc-700 text-white">
-                        {categories.map(category => (
-                          <SelectItem key={category.id} value={category.id.toString()}>
-                            {category.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="grid gap-2">
-                    <Label htmlFor="date">Data</Label>
-                    <Input
-                      id="date"
-                      name="date"
-                      type="date"
-                      className="bg-zinc-700 border-zinc-600"
-                      value={newTransaction.date}
-                      onChange={handleTransactionInputChange}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <DialogFooter>
-                <Button
-                  type="submit"
-                  className="bg-blue-600 hover:bg-blue-700"
-                  onClick={handleCreateTransaction}
-                >
-                  Registrar Transação
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog> */}
         </div>
       </div>
 
@@ -530,13 +353,6 @@ export default function AccountTransactions() {
       {/* Filtros */}
       <div className="flex flex-col md:flex-row gap-4 mb-6">
         <div className="relative flex-1">
-          {/*  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-zinc-400" size={18} />
-          <Input
-            placeholder="Buscar transações..."
-            className="pl-10 bg-zinc-700 border-zinc-600"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          /> */}
         </div>
 
         <div className="flex gap-2 flex-wrap">
